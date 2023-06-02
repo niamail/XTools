@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "XTools"
-version = "0.1.0"
+name = "xtools"
+version = "0.1.1"
 description = "A python package of tools by Lee Zhang"
 authors = ["niamail <xggsuser@163.com>"]
 readme = "README.md"
