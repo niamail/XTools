@@ -13,7 +13,7 @@ setup(
         "License :: OSI Approved :: MIT License",
     ],
     install_requires=["pyyaml>=6.0"],
-    python_requires=">=3.8, <=3.11",
+    python_requires=">=3.8",
     name="XTools",
     version="0.1.1",
     author="Lee Zhang",
