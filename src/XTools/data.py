@@ -9,9 +9,6 @@ import yaml
 """
 
 
-default_path = "./data/fck.yaml"
-
-
 def read(url: str) -> dict:
     """
     此 Python 函数从给定的 URL 读取 YAML 文件并将其内容作为字典返回。
@@ -45,7 +42,7 @@ def settings_get(path: str, key="default"):
     )
 
 
-def get_list_value(now_list: list, target_key, results=[], mod="value"):
+def get_list_value(now_list: list, target_key, results=None):
     """
     此函数递归地在字典列表中搜索目标键并返回相应的值。
 
@@ -61,6 +58,8 @@ def get_list_value(now_list: list, target_key, results=[], mod="value"):
       该函数将返回列表中目标键第一次出现的值。如果未找到目标键，它将返回 None。
     """
     # sourcery skip: default-mutable-arg
+    if results is None:
+        results = []
     for i in now_list:  # 当前迭代的list
         if isinstance(i, dict):  # 如果data是一个字典，就调用递归函数：get_dict_value()进行遍历
             get_dict_value(i, target_key, results=results)
@@ -69,7 +68,7 @@ def get_list_value(now_list: list, target_key, results=[], mod="value"):
     return results
 
 
-def get_dict_value(now_dict: dict, target_key, results=[]):
+def get_dict_value(now_dict: dict, target_key, results=None):
     """
     此函数递归地在字典中搜索目标键并返回其值。
 
@@ -82,6 +81,8 @@ def get_dict_value(now_dict: dict, target_key, results=[]):
       输入字典中目标键第一次出现的值。
     """
     # sourcery skip: default-mutable-arg
+    if results is None:
+        results = []
     for key, value in now_dict.items():  # 当前迭代的字典
         if isinstance(value, dict):  # 如果data是一个字典，就调用递归函数：get_dict_value()进行遍历
             get_dict_value(value, target_key, results=results)
@@ -94,73 +95,91 @@ def get_dict_value(now_dict: dict, target_key, results=[]):
     return results
 
 
-def write(cfg, write_path, dict1, k=None, n=0, mod="change"):
-    """
-    此函数将字典或列表写入指定路径的 YAML 文件，也可以将新字典添加到原始字典中的特定键。
+class Write:
+    def __init__(self, cfg, write_path, dict1, mod="add", k=None, n=0):
+        self.cfg = cfg
+        self.write_path = write_path
+        self.dict1 = dict1
+        self.k = k
+        self.n = n
+        self.mod = mod
 
-    Args:
-      cfg: 配置数据，可以是字典或列表。
-      write_path: YAML 数据将写入的文件路径。
-      dict1: 需要写入 YAML 文件的字典。
-      k: “k”是一个键列表，表示到嵌套字典中需要写入新数据的特定位置的路径。
-      n: 参数“n”是一个整数，用于跟踪函数中的递归深度。Defaults to 0
-    Returns:
-      包含更新的 `cfg` 字典和 `father` 列表的元组。
-    """
-    # sourcery skip: default-mutable-arg, low-code-quality
-    if k is None:
-        return "Error Code: 0"
-    data = {}
-    if isinstance(cfg, dict):  # 当cfg为字典
-        for key, value in cfg.items():  # 取出cfg中的键值对
-            if key in k:  # 当cfg中的键key在k列表中时
-                if key == k[-1] and isinstance(value, list):
-                    # 当key在k列表的最后一个时，意味着已经匹配到最终的路径，
-                    # 如果value为dict，则直接将要写入或刷新的字典与原字典拼合，
-                    # 由于Python的dict的特性，刷新value的值，cfg的值也会随之改变。
-                    if mod != "remove":
-                        value.append(dict1)
-                    else:
-                        # 当method为remove时
-                        for dict_key in dict1.keys():
-                            # 遍历要删除的键
-                            for text in value:
-                                # 遍历value这一列表，取出字典元素
-                                if dict_key in text:
-                                    # 当要删除的键在value的元素中时，
-                                    # 将该元素从value中删除
-                                    value.remove(text)
-                    data = cfg
-                elif key == k[-1] and isinstance(value, dict):  # 当cfg为列表时
-                    # PS：该种情况极难出现，所以该elif已停止维护
-                    cfg[key] = value
-                    data = cfg
-                    # data.update(dict1)
-                elif key != k[-1] and isinstance(value, dict):
-                    # 该elif为递归的起点，十分重要
-                    # 当key与k列表中最后一个值不匹配，且value为一个字典时，
-                    # 将当前的value作为新一轮递归的cfg，递归深度值加一
-                    cfg[key] = write(
-                        value, write_path=write_path, dict1=dict1, k=k, n=n + 1, mod=mod
-                    )
-                    data = cfg
-            if n == 0:
-                # 将处理完毕的data字典写入write_path所指定的文件中，
-                # Args：
-                # allow_unicode：让yaml文件支持Unicode编码，能正常显示中文
-                # indent：让yaml文件拥有缩进，增强可读性
-                # Function：
-                #   yaml.safe_dump()相较与yaml.dump()更加安全
-                #   safe_dump()不会加载yaml文件中的不安全的对象(object)
-                with open(op.abspath(write_path), mode="+w", encoding="utf-8") as f:
-                    yaml.safe_dump(data, f, allow_unicode=True, indent=2)
-    elif isinstance(cfg, list):
-        if dict1 not in cfg:
-            cfg.append(dict1)
-            data = cfg
-            with open(op.abspath(write_path), mode="+w", encoding="utf-8") as f:
+    def mod_work(self, value):
+        if self.mod != "remove":
+            value.append(self.dict1)
+        else:
+            # 当method为remove时
+            for dict_key in self.dict1.keys():
+                # 遍历要删除的键
+                for text in value:
+                    # 遍历value这一列表，取出字典元素
+                    if dict_key in text:
+                        # 当要删除的键在value的元素中时，
+                        # 将该元素从value中删除
+                        value.remove(text)
+
+    def writing(self, data):
+        # 将处理完毕的data字典写入write_path所指定的文件中，
+        # Args：
+        # allow_unicode：让yaml文件支持Unicode编码，能正常显示中文
+        # indent：让yaml文件拥有缩进，增强可读性
+        # Function：
+        #   yaml.safe_dump()相较与yaml.dump()更加安全
+        #   safe_dump()不会加载yaml文件中的不安全的对象(object)
+        with open(op.abspath(self.write_path), mode="+w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, indent=2)
+
+    def matching(self, value, key, data):
+        if key == self.k[-1] and isinstance(value, dict):
+            # 当key在k列表的最后一个时，意味着已经匹配到最终的路径，
+            # 如果value为dict，则直接将要写入或刷新的字典与原字典拼合，
+            # 由于Python的dict的特性，刷新value的值，cfg的值也会随之改变。
+            value.update(self.dict1)
+            data = self.cfg
+        elif key == self.k[-1] and isinstance(value, list):  # 当cfg为列表时
+            # PS：该种情况极难出现，所以该elif已停止维护
+            self.mod_work(value)
+            data = self.cfg
+            # data.update(dict1)
+        elif key != self.k[-1] and isinstance(value, dict):
+            # 该elif为递归的起点，十分重要
+            # 当key与k列表中最后一个值不匹配，且value为一个字典时，
+            # 将当前的value作为新一轮递归的cfg，递归深度值加一
+            self.cfg = value
+            self.n += 1
+            self.cfg[key] = self.master()
+            data = self.cfg
+        return data
+
+    def master(self):
+        """
+        此函数将字典或列表写入指定路径的 YAML 文件，也可以将新字典添加到原始字典中的特定键。
+
+        Args:
+          cfg: 配置数据，可以是字典或列表。
+          write_path: YAML 数据将写入的文件路径。
+          dict1: 需要写入 YAML 文件的字典。
+          k: “k”是一个键列表，表示到嵌套字典中需要写入新数据的特定位置的路径。
+          n: 参数“n”是一个整数，用于跟踪函数中的递归深度。Defaults to 0
+        Returns:
+          包含更新的 `cfg` 字典和 `father` 列表的元组。
+        """
+        # sourcery skip: default-mutable-arg, low-code-quality
+        if self.k is None:
+            return "Error Code: 0"
+        data = {}
+        if isinstance(self.cfg, dict):  # 当cfg为字典
+            for key, value in self.cfg.items():  # 取出cfg中的键值对
+                if key in self.k:  # 当cfg中的键key在k列表中时
+                    data = self.matching(value, key, data)
+                if self.n == 0:
+                    self.writing(data)
+        elif isinstance(self.cfg, list) and self.dict1 not in self.cfg:
+            self.cfg.append(self.dict1)
+            data = self.cfg
+            with open(op.abspath(self.write_path), mode="+w", encoding="utf-8") as f:
                 yaml.safe_dump(data, f, allow_unicode=True, indent=2)
-    return cfg  # 返回结果
+        return self.cfg  # 返回结果
 
 
 def key_clever(key: str):
@@ -173,13 +192,10 @@ def key_clever(key: str):
     Returns:
       函数 key_clever 将字符串 key 作为输入，并使用句点 (.) 作为分隔符将其拆分为字符串列表。如果结果列表只有一个元素，则该函数将该元素作为字符串返回。否则，该函数返回字符串列表。
     """
-    keys = key.split(".")
-    if len(keys) == 1:
-        keys = key
-    return keys
+    return key.split(".")
 
 
-def wr_first(cfg: dict, write_path: str, dict1: dict, k: str, n=0, mod="change"):
+def wr_run(cfg: dict, write_path: str, dict1: dict, k: list, mod, n=0):
     """
     如果输入“k”是一个列表，此函数将调用带有特定参数的另一个函数“write”。
 
@@ -195,14 +211,5 @@ def wr_first(cfg: dict, write_path: str, dict1: dict, k: str, n=0, mod="change")
     if isinstance(k, str):
         # 当k为字符串时，将它格式化为一个List
         k = key_clever(k)
-        write(cfg, write_path=write_path, dict1=dict1, k=k, n=n, mod=mod)
-
-
-if __name__ == "__main__":
-    wr_first(
-        read(default_path),
-        default_path,
-        {"picgo": "https://picgo.github.io/PicGo-Doc/zh/"},
-        k="settings.login",
-        mod="remove",
-    )
+        w = Write(cfg, write_path=write_path, dict1=dict1, k=k, n=n, mod=mod)
+        w.master()
